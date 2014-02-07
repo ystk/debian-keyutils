@@ -11,7 +11,9 @@
 .SH NAME
 keyctl - Key management facility control
 .SH SYNOPSIS
-\fBkeyctl\fR show
+\fBkeyctl\fR --version
+.br
+\fBkeyctl\fR show [-x] [<keyring>]
 .br
 \fBkeyctl\fR add <type> <desc> <data> <keyring>
 .br
@@ -35,7 +37,7 @@ keyctl - Key management facility control
 .br
 \fBkeyctl\fR link <key> <keyring>
 .br
-\fBkeyctl\fR unlink <key> <keyring>
+\fBkeyctl\fR unlink <key> [<keyring>]
 .br
 \fBkeyctl\fR search <keyring> <type> <desc> [<dest_keyring>]
 .br
@@ -71,9 +73,19 @@ keyctl - Key management facility control
 .br
 \fBkeyctl\fR negate <key> <timeout> <keyring>
 .br
+\fBkeyctl\fR reject <key> <timeout> <error> <keyring>
+.br
 \fBkeyctl\fR timeout <key> <timeout>
 .br
 \fBkeyctl\fR security <key>
+.br
+\fBkeyctl\fR reap [-v]
+.br
+\fBkeyctl\fR purge <type>
+.br
+\fBkeyctl\fR purge [-i] [-p] <type> <desc>
+.br
+\fBkeyctl\fR purge -s <type> <desc>
 .SH DESCRIPTION
 This program is used to control the key management facility in various ways
 using a variety of subcommands.
@@ -128,12 +140,26 @@ Any non-ambiguous shortening of a command name may be used in lieu of the full
 command name. This facility should not be used in scripting as new commands may
 be added in future that then cause ambiguity.
 .P
+(*) \fBDisplay the package version number\fR
+.P
+\fBkeyctl --version\fR
+.P
+This command prints the package version number and build date and exits:
+.P
+.RS
+testbox>keyctl --version
+.br
+keyctl from keyutils-1.5.3 (Built 2011-08-24)
+.RE
+.P
 (*) \fBShow process keyrings\fR
 .P
-\fBkeyctl show\fR
+\fBkeyctl show [-x] [<keyring>]\fR
 .P
-This command recursively shows what keyrings a process is subscribed to and
-what keys and keyrings they contain.
+By default this command recursively shows what keyrings a process is subscribed
+to and what keys and keyrings they contain.  If a keyring is specified then
+that keyring will be dumped instead.  If \fB-x\fR is specified then the keyring
+IDs will be dumped in hex instead of decimal.
 .P
 (*) \fBAdd a key to a keyring\fR
 .P
@@ -284,18 +310,20 @@ testbox>keyctl link 27 27
 keyctl_link: Resource deadlock avoided
 .RE
 .P
-(*) \fBUnlink a key from a keyring\fR
+(*) \fBUnlink a key from a keyring or the session keyring tree\fR
 .P
-\fBkeyctl unlink\fR <key> <keyring>
+\fBkeyctl unlink\fR <key> [<keyring>]
 .P
-This command removes a link to the key from the keyring. Error "Not a
-directory" will be returned if the destination is not a keyring. Error
-"Permission denied" will be returned if the keyring doesn't have write
-permission. Error "No such file or directory" will be returned if the key is
-not linked to by the keyring.
+If the keyring is specified, this command removes a link to the key from the
+keyring. Error "Not a directory" will be returned if the destination is not a
+keyring. Error "Permission denied" will be returned if the keyring doesn't have
+write permission. Error "No such file or directory" will be returned if the key
+is not linked to by the keyring.
 .P
-Note that this only removes one key link from the keyring; any further links to
-the same key are not deleted.
+If the keyring is not specified, this command performs a depth-first search of
+the session keyring tree and removes all the links to the nominated key that it
+finds (and that it is permitted to remove).  It prints the number of successful
+unlinks before exiting.
 .P
 .RS
 testbox>keyctl unlink 23 27
@@ -542,14 +570,20 @@ keyring;4043;4043;3f1f0000;fish
 \fBkeyctl pinstantiate\fR <key> <keyring>
 .br
 \fBkeyctl negate\fR <key> <timeout> <keyring>
+.br
+\fBkeyctl reject\fR <key> <timeout> <error> <keyring>
 .P
 These commands are used to attach data to a partially set up key (as created by
-the kernel and passed to /sbin/request-key). "instantiate" marks a key as being
-valid and attaches the data as the payload. "negate" marks a key as invalid and
-sets a timeout on it so that it'll go away after a while. This prevents a lot
-of quickly sequential requests from slowing the system down overmuch when they
-all fail, as all subsequent requests will then fail with error "Requested key
-not found" until the negative key has expired.
+the kernel and passed to /sbin/request-key).  "instantiate" marks a key as
+being valid and attaches the data as the payload.  "negate" and "reject" mark a
+key as invalid and sets a timeout on it so that it'll go away after a while.
+This prevents a lot of quickly sequential requests from slowing the system down
+overmuch when they all fail, as all subsequent requests will then fail with
+error "Requested key not found" (if negated) or the specified error (if
+rejected) until the negative key has expired.
+.P
+Reject's error argument can either be a UNIX error number or one of
+.BR "" "'" rejected "', '" expired "' or '" revoked "'."
 .P
 The newly instantiated key will be attached to the specified keyring.
 .P
@@ -562,6 +596,8 @@ has been instantiated one way or another.
 testbox>keyctl instantiate $1 "Debug $3" $4
 .br
 testbox>keyctl negate $1 30 $4
+.br
+testbox>keyctl reject $1 30 64 $4
 .RE
 .P
 The \fBpinstantiate\fR variant of the command reads the data from stdin rather
@@ -630,6 +666,51 @@ call, and so may only affect processes with matching credentials.
 Furthermore, the change does not take effect till the parent process next
 transitions from kernel space to user space - typically when the \fBwait\fP()
 system call returns.
+.P
+(*) \fBRemove dead keys from the session keyring tree\fR
+.P
+\fBkeyctl reap\fR
+.P
+This command performs a depth-first search of the caller's session keyring tree
+and attempts to unlink any key that it finds that is inaccessible due to
+expiry, revocation, rejection or negation.  It does not attempt to remove live
+keys that are unavailable simply due to a lack of granted permission.
+.P
+A key that is designated reapable will only be removed from a keyring if the
+caller has Write permission on that keyring, and only keyrings that grant
+Search permission to the caller will be searched.
+.P
+The command prints the number of keys reaped before it exits.  If the \fB-v\fR
+flag is passed then the reaped keys are listed as they're being reaped,
+together with the success or failure of the unlink.
+.P
+(*) \fBRemove matching keys from the session keyring tree\fR
+.P
+\fBkeyctl\fR purge <type>
+.br
+\fBkeyctl\fR purge [-i] [-p] <type> <desc>
+.br
+\fBkeyctl\fR purge -s <type> <desc>
+.P
+These commands perform a depth-first search to find matching keys in the
+caller's session keyring tree and attempts to unlink them.  The number of
+keys successfully unlinked is printed at the end.
+.P
+The keyrings must grant Read and View permission to the caller to be searched,
+and the keys to be removed must also grant View permission.  Keys can only be
+removed from keyrings that grant Write permission.
+.P
+The first variant purges all keys of the specified type.
+.P
+The second variant purges all keys of the specified type that also match the
+given description literally.  The -i flag allows a case-independent match and
+the -p flag allows a prefix match.
+.P
+The third variant purges all keys of the specified type and matching
+description using the key type's comparator in the kernel to match the
+description.  This permits the key type to match a key with a variety of
+descriptions.
+.P
 .SH ERRORS
 .P
 There are a number of common errors returned by this program:

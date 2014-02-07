@@ -1,6 +1,6 @@
 /* keyctl.c: key control program
  *
- * Copyright (C) 2005 Red Hat, Inc. All Rights Reserved.
+ * Copyright (C) 2005, 2011 Red Hat, Inc. All Rights Reserved.
  * Written by David Howells (dhowells@redhat.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -9,6 +9,7 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -26,6 +27,7 @@ struct command {
 	const char	*format;
 };
 
+static int act_keyctl___version(int argc, char *argv[]);
 static int act_keyctl_show(int argc, char *argv[]);
 static int act_keyctl_add(int argc, char *argv[]);
 static int act_keyctl_padd(int argc, char *argv[]);
@@ -57,45 +59,54 @@ static int act_keyctl_negate(int argc, char *argv[]);
 static int act_keyctl_timeout(int argc, char *argv[]);
 static int act_keyctl_security(int argc, char *argv[]);
 static int act_keyctl_new_session(int argc, char *argv[]);
+static int act_keyctl_reject(int argc, char *argv[]);
+static int act_keyctl_reap(int argc, char *argv[]);
+static int act_keyctl_purge(int argc, char *argv[]);
 
 const struct command commands[] = {
-	{ act_keyctl_show,	"show",		"" },
+	{ act_keyctl___version,	"--version",	"" },
 	{ act_keyctl_add,	"add",		"<type> <desc> <data> <keyring>" },
+	{ act_keyctl_chgrp,	"chgrp",	"<key> <gid>" },
+	{ act_keyctl_chown,	"chown",	"<key> <uid>" },
+	{ act_keyctl_clear,	"clear",	"<keyring>" },
+	{ act_keyctl_describe,	"describe",	"<keyring>" },
+	{ act_keyctl_instantiate, "instantiate","<key> <data> <keyring>" },
+	{ act_keyctl_link,	"link",		"<key> <keyring>" },
+	{ act_keyctl_list,	"list",		"<keyring>" },
+	{ act_keyctl_negate,	"negate",	"<key> <timeout> <keyring>" },
+	{ act_keyctl_new_session, "new_session",	"" },
+	{ act_keyctl_newring,	"newring",	"<name> <keyring>" },
 	{ act_keyctl_padd,	"padd",		"<type> <desc> <keyring>" },
+	{ act_keyctl_pinstantiate, "pinstantiate","<key> <keyring>" },
+	{ act_keyctl_pipe,	"pipe",		"<key>" },
+	{ act_keyctl_prequest2,	"prequest2",	"<type> <desc> [<dest_keyring>]" },
+	{ act_keyctl_print,	"print",	"<key>" },
+	{ act_keyctl_pupdate,	"pupdate",	"<key>" },
+	{ act_keyctl_purge,	"purge",	"<type>" },
+	{ NULL,			"purge",	"[-p] [-i] <type> <desc>" },
+	{ NULL,			"purge",	"-s <type> <desc>" },
+	{ act_keyctl_rdescribe,	"rdescribe",	"<keyring> [sep]" },
+	{ act_keyctl_read,	"read",		"<key>" },
+	{ act_keyctl_reap,	"reap",		"[-v]" },
+	{ act_keyctl_reject,	"reject",	"<key> <timeout> <error> <keyring>" },
 	{ act_keyctl_request,	"request",	"<type> <desc> [<dest_keyring>]" },
 	{ act_keyctl_request2,	"request2",	"<type> <desc> <info> [<dest_keyring>]" },
-	{ act_keyctl_prequest2,	"prequest2",	"<type> <desc> [<dest_keyring>]" },
-	{ act_keyctl_update,	"update",	"<key> <data>" },
-	{ act_keyctl_pupdate,	"pupdate",	"<key>" },
-	{ act_keyctl_newring,	"newring",	"<name> <keyring>" },
 	{ act_keyctl_revoke,	"revoke",	"<key>" },
-	{ act_keyctl_clear,	"clear",	"<keyring>" },
-	{ act_keyctl_link,	"link",		"<key> <keyring>" },
-	{ act_keyctl_unlink,	"unlink",	"<key> <keyring>" },
-	{ act_keyctl_search,	"search",	"<keyring> <type> <desc> [<dest_keyring>]" },
-	{ act_keyctl_read,	"read",		"<key>" },
-	{ act_keyctl_pipe,	"pipe",		"<key>" },
-	{ act_keyctl_print,	"print",	"<key>" },
-	{ act_keyctl_list,	"list",		"<keyring>" },
 	{ act_keyctl_rlist,	"rlist",	"<keyring>" },
-	{ act_keyctl_describe,	"describe",	"<keyring>" },
-	{ act_keyctl_rdescribe,	"rdescribe",	"<keyring> [sep]" },
-	{ act_keyctl_chown,	"chown",	"<key> <uid>" },
-	{ act_keyctl_chgrp,	"chgrp",	"<key> <gid>" },
-	{ act_keyctl_setperm,	"setperm",	"<key> <mask>" },
-	{ act_keyctl_session,	"session",	"" },
-	{ act_keyctl_session,	"session",	"- [<prog> <arg1> <arg2> ...]" },
-	{ act_keyctl_session,	"session",	"<name> [<prog> <arg1> <arg2> ...]" },
-	{ act_keyctl_instantiate, "instantiate","<key> <data> <keyring>" },
-	{ act_keyctl_pinstantiate, "pinstantiate","<key> <keyring>" },
-	{ act_keyctl_negate,	"negate",	"<key> <timeout> <keyring>" },
-	{ act_keyctl_timeout,	"timeout",	"<key> <timeout>" },
+	{ act_keyctl_search,	"search",	"<keyring> <type> <desc> [<dest_keyring>]" },
 	{ act_keyctl_security,	"security",	"<key>" },
-	{ act_keyctl_new_session, "new_session",	"" },
-	{ NULL, NULL, NULL }
+	{ act_keyctl_session,	"session",	"" },
+	{ NULL,			"session",	"- [<prog> <arg1> <arg2> ...]" },
+	{ NULL,			"session",	"<name> [<prog> <arg1> <arg2> ...]" },
+	{ act_keyctl_setperm,	"setperm",	"<key> <mask>" },
+	{ act_keyctl_show,	"show",		"[-x] [<keyring>]" },
+	{ act_keyctl_timeout,	"timeout",	"<key> <timeout>" },
+	{ act_keyctl_unlink,	"unlink",	"<key> [<keyring>]" },
+	{ act_keyctl_update,	"update",	"<key> <data>" },
+	{ NULL,			NULL,		NULL }
 };
 
-static int dump_key_tree(key_serial_t keyring, const char *name);
+static int dump_key_tree(key_serial_t keyring, const char *name, int hex_key_IDs);
 static void format(void) __attribute__((noreturn));
 static void error(const char *msg) __attribute__((noreturn));
 static key_serial_t get_key_id(const char *arg);
@@ -103,6 +114,7 @@ static key_serial_t get_key_id(const char *arg);
 static uid_t myuid;
 static gid_t mygid, *mygroups;
 static int myngroups;
+static int verbose;
 
 /*****************************************************************************/
 /*
@@ -134,7 +146,9 @@ int main(int argc, char *argv[])
 	best = NULL;
 	n = strlen(*argv);
 
-	for (cmd = commands; cmd->action; cmd++) {
+	for (cmd = commands; cmd->name; cmd++) {
+		if (!cmd->action)
+			continue;
 		if (memcmp(cmd->name, *argv, n) != 0)
 			continue;
 
@@ -188,7 +202,7 @@ static void format(void)
 
 	fprintf(stderr, "Format:\n");
 
-	for (cmd = commands; cmd->action; cmd++)
+	for (cmd = commands; cmd->name; cmd++)
 		fprintf(stderr, "  keyctl %s %s\n", cmd->name, cmd->format);
 
 	fprintf(stderr, "\n");
@@ -211,9 +225,20 @@ static void format(void)
 
 /*****************************************************************************/
 /*
+ * Display version information
+ */
+static int act_keyctl___version(int argc, char *argv[])
+{
+	printf("keyctl from %s (Built %s)\n",
+	       keyutils_version_string, keyutils_build_string);
+	return 0;
+}
+
+/*****************************************************************************/
+/*
  * grab data from stdin
  */
-static char *grab_stdin(void)
+static char *grab_stdin(size_t *_size)
 {
 	static char input[65536 + 1];
 	int n, tmp;
@@ -237,6 +262,7 @@ static char *grab_stdin(void)
 	}
 
 	input[n] = '\0';
+	*_size = n;
 
 	return input;
 
@@ -294,10 +320,22 @@ write_mask:
  */
 static int act_keyctl_show(int argc, char *argv[])
 {
-	if (argc != 1)
+	key_serial_t keyring = KEY_SPEC_SESSION_KEYRING;
+	int hex_key_IDs = 0;
+
+	if (argc >= 2 && strcmp(argv[1], "-x") == 0) {
+		hex_key_IDs = 1;
+		argc--;
+		argv++;
+	}
+
+	if (argc > 2)
 		format();
 
-	dump_key_tree(KEY_SPEC_SESSION_KEYRING, "Session Keyring");
+	if (argc == 2)
+		keyring = get_key_id(argv[1]);
+
+	dump_key_tree(keyring, argc == 2 ? "Keyring" : "Session Keyring", hex_key_IDs);
 	return 0;
 
 } /* end act_keyctl_show() */
@@ -332,19 +370,26 @@ static int act_keyctl_add(int argc, char *argv[])
  */
 static int act_keyctl_padd(int argc, char *argv[])
 {
-	char *args[6];
+	key_serial_t dest;
+	size_t datalen;
+	void *data;
+	int ret;
+
 
 	if (argc != 4)
 		format();
 
-	args[0] = argv[0];
-	args[1] = argv[1];
-	args[2] = argv[2];
-	args[3] = grab_stdin();
-	args[4] = argv[3];
-	args[5] = NULL;
+	dest = get_key_id(argv[3]);
 
-	return act_keyctl_add(5, args);
+	data = grab_stdin(&datalen);
+
+	ret = add_key(argv[1], argv[2], data, datalen, dest);
+	if (ret < 0)
+		error("add_key");
+
+	/* print the resulting key ID */
+	printf("%d\n", ret);
+	return 0;
 
 } /* end act_keyctl_padd() */
 
@@ -408,6 +453,7 @@ static int act_keyctl_request2(int argc, char *argv[])
 static int act_keyctl_prequest2(int argc, char *argv[])
 {
 	char *args[6];
+	size_t datalen;
 
 	if (argc != 3 && argc != 4)
 		format();
@@ -415,7 +461,7 @@ static int act_keyctl_prequest2(int argc, char *argv[])
 	args[0] = argv[0];
 	args[1] = argv[1];
 	args[2] = argv[2];
-	args[3] = grab_stdin();
+	args[3] = grab_stdin(&datalen);
 	args[4] = argv[3];
 	args[5] = NULL;
 
@@ -449,17 +495,20 @@ static int act_keyctl_update(int argc, char *argv[])
  */
 static int act_keyctl_pupdate(int argc, char *argv[])
 {
-	char *args[4];
+	key_serial_t key;
+	size_t datalen;
+	void *data;
 
 	if (argc != 2)
 		format();
 
-	args[0] = argv[0];
-	args[1] = argv[1];
-	args[2] = grab_stdin();
-	args[3] = NULL;
+	key = get_key_id(argv[1]);
+	data = grab_stdin(&datalen);
 
-	return act_keyctl_update(3, args);
+	if (keyctl_update(key, data, datalen) < 0)
+		error("keyctl_update");
+
+	return 0;
 
 } /* end act_keyctl_pupdate() */
 
@@ -547,26 +596,43 @@ static int act_keyctl_link(int argc, char *argv[])
 
 } /* end act_keyctl_link() */
 
-/*****************************************************************************/
 /*
- * unlink a key from a keyrign
+ * Attempt to unlink a key matching the ID
+ */
+static int act_keyctl_unlink_func(key_serial_t parent, key_serial_t key,
+				  char *desc, int desc_len, void *data)
+{
+	key_serial_t *target = data;
+
+	if (key == *target)
+		return keyctl_unlink(key, parent) < 0 ? 0 : 1;
+	return 0;
+}
+
+/*
+ * Unlink a key from a keyring or from the session keyring tree.
  */
 static int act_keyctl_unlink(int argc, char *argv[])
 {
 	key_serial_t keyring, key;
+	int n;
 
-	if (argc != 3)
+	if (argc != 2 && argc != 3)
 		format();
 
 	key = get_key_id(argv[1]);
-	keyring = get_key_id(argv[2]);
 
-	if (keyctl_unlink(key, keyring) < 0)
-		error("keyctl_unlink");
+	if (argc == 3) {
+		keyring = get_key_id(argv[2]);
+		if (keyctl_unlink(key, keyring) < 0)
+			error("keyctl_unlink");
+	} else {
+		n = recursive_session_key_scan(act_keyctl_unlink_func, &key);
+		printf("%d links removed\n", n);
+	}
 
 	return 0;
-
-} /* end act_keyctl_unlink() */
+}
 
 /*****************************************************************************/
 /*
@@ -1105,18 +1171,21 @@ static int act_keyctl_instantiate(int argc, char *argv[])
  */
 static int act_keyctl_pinstantiate(int argc, char *argv[])
 {
-	char *args[5];
+	key_serial_t key, dest;
+	size_t datalen;
+	void *data;
 
 	if (argc != 3)
 		format();
 
-	args[0] = argv[0];
-	args[1] = argv[1];
-	args[2] = grab_stdin();
-	args[3] = argv[2];
-	args[4] = NULL;
+	key = get_key_id(argv[1]);
+	dest = get_key_id(argv[2]);
+	data = grab_stdin(&datalen);
 
-	return act_keyctl_instantiate(4, args);
+	if (keyctl_instantiate(key, data, datalen, dest) < 0)
+		error("keyctl_instantiate");
+
+	return 0;
 
 } /* end act_keyctl_pinstantiate() */
 
@@ -1230,6 +1299,261 @@ static int act_keyctl_new_session(int argc, char *argv[])
 
 /*****************************************************************************/
 /*
+ * reject a key that's under construction
+ */
+static int act_keyctl_reject(int argc, char *argv[])
+{
+	unsigned long timeout;
+	key_serial_t key, dest;
+	unsigned long rejerr;
+	char *q;
+
+	if (argc != 5)
+		format();
+
+	key = get_key_id(argv[1]);
+
+	timeout = strtoul(argv[2], &q, 10);
+	if (*q) {
+		fprintf(stderr, "Unparsable timeout: '%s'\n", argv[2]);
+		exit(2);
+	}
+
+	if (strcmp(argv[3], "rejected") == 0) {
+		rejerr = EKEYREJECTED;
+	} else if (strcmp(argv[3], "revoked") == 0) {
+		rejerr = EKEYREVOKED;
+	} else if (strcmp(argv[3], "expired") == 0) {
+		rejerr = EKEYEXPIRED;
+	} else {
+		rejerr = strtoul(argv[3], &q, 10);
+		if (*q) {
+			fprintf(stderr, "Unparsable error: '%s'\n", argv[3]);
+			exit(2);
+		}
+	}
+
+	dest = get_key_id(argv[4]);
+
+	if (keyctl_reject(key, timeout, rejerr, dest) < 0)
+		error("keyctl_negate");
+
+	return 0;
+}
+
+/*
+ * Attempt to unlink a key if we can't read it for reasons other than we don't
+ * have permission
+ */
+static int act_keyctl_reap_func(key_serial_t parent, key_serial_t key,
+				char *desc, int desc_len, void *data)
+{
+	if (desc_len < 0 && errno != EACCES) {
+		if (verbose)
+			printf("Reap %d", key);
+		if (keyctl_unlink(key, parent) < 0) {
+			if (verbose)
+				printf("... failed %m\n");
+			return 0;
+		} else {
+			if (verbose)
+				printf("\n");
+			return 1;
+		};
+	}
+	return 0;
+}
+
+/*
+ * Reap the dead keys from the session keyring tree
+ */
+static int act_keyctl_reap(int argc, char *argv[])
+{
+	int n;
+
+	if (argc > 1 && strcmp(argv[1], "-v") == 0) {
+		verbose = 1;
+		argc--;
+		argv++;
+	}
+
+	if (argc != 1)
+		format();
+
+	n = recursive_session_key_scan(act_keyctl_reap_func, NULL);
+	printf("%d keys reaped\n", n);
+	return 0;
+}
+
+struct purge_data {
+	const char	*type;
+	const char	*desc;
+	size_t		desc_len;
+	size_t		type_len;
+	char		prefix_match;
+	char		case_indep;
+};
+
+/*
+ * Attempt to unlink a key matching the type
+ */
+static int act_keyctl_purge_type_func(key_serial_t parent, key_serial_t key,
+				      char *raw, int raw_len, void *data)
+{
+	const struct purge_data *purge = data;
+	char *p, *type;
+
+	if (parent == 0 || !raw)
+		return 0;
+
+	/* type is everything before the first semicolon */
+	type = raw;
+	p = memchr(raw, ';', raw_len);
+	if (!p)
+		return 0;
+	*p = 0;
+	if (strcmp(type, purge->type) != 0)
+		return 0;
+
+	return keyctl_unlink(key, parent) < 0 ? 0 : 1;
+}
+
+/*
+ * Attempt to unlink a key matching the type and description literally
+ */
+static int act_keyctl_purge_literal_func(key_serial_t parent, key_serial_t key,
+					 char *raw, int raw_len, void *data)
+{
+	const struct purge_data *purge = data;
+	size_t tlen;
+	char *p, *type, *desc;
+
+	if (parent == 0 || !raw)
+		return 0;
+
+	/* type is everything before the first semicolon */
+	type = raw;
+	p = memchr(type, ';', raw_len);
+	if (!p)
+		return 0;
+
+	tlen = p - type;
+	if (tlen != purge->type_len)
+		return 0;
+	if (memcmp(type, purge->type, tlen) != 0)
+		return 0;
+
+	/* description is everything after the last semicolon */
+	p++;
+	desc = memrchr(p, ';', raw + raw_len - p);
+	if (!desc)
+		return 0;
+	desc++;
+
+	if (purge->prefix_match) {
+		if (raw_len - (desc - raw) < purge->desc_len)
+			return 0;
+	} else {
+		if (raw_len - (desc - raw) != purge->desc_len)
+			return 0;
+	}
+
+	if (purge->case_indep) {
+		if (strncasecmp(purge->desc, desc, purge->desc_len) != 0)
+			return 0;
+	} else {
+		if (memcmp(purge->desc, desc, purge->desc_len) != 0)
+			return 0;
+	}
+
+	printf("%*.*s '%s'\n", (int)tlen, (int)tlen, type, desc);
+
+	return keyctl_unlink(key, parent) < 0 ? 0 : 1;
+}
+
+/*
+ * Attempt to unlink a key matching the type and description literally
+ */
+static int act_keyctl_purge_search_func(key_serial_t parent, key_serial_t keyring,
+					char *raw, int raw_len, void *data)
+{
+	const struct purge_data *purge = data;
+	key_serial_t key;
+	int kcount = 0;
+
+	if (!raw || memcmp(raw, "keyring;", 8) != 0)
+		return 0;
+
+	for (;;) {
+		key = keyctl_search(keyring, purge->type, purge->desc, 0);
+		if (keyctl_unlink(key, keyring) < 0)
+			return kcount;
+		kcount++;
+	}
+	return kcount;
+}
+
+/*
+ * Purge matching keys from a keyring
+ */
+static int act_keyctl_purge(int argc, char *argv[])
+{
+	recursive_key_scanner_t func;
+	struct purge_data purge = {
+		.prefix_match	= 0,
+		.case_indep	= 0,
+	};
+	int n = 0, search_mode = 0;
+
+	argc--;
+	argv++;
+	while (argc > 0 && argv[0][0] == '-') {
+		if (argv[0][1] == 's')
+			search_mode = 1;
+		else if (argv[0][1] == 'p')
+			purge.prefix_match = 1;
+		else if (argv[0][1] == 'i')
+			purge.case_indep = 1;
+		else
+			format();
+		argc--;
+		argv++;
+	}
+
+	if (argc < 1)
+		format();
+
+	purge.type	= argv[0];
+	purge.desc	= argv[1];
+	purge.type_len	= strlen(purge.type);
+	purge.desc_len	= purge.desc ? strlen(purge.desc) : 0;
+
+	if (search_mode == 1) {
+		if (argc != 2 || purge.prefix_match || purge.case_indep)
+			format();
+		/* purge all keys of a specific type and description, according
+		 * to the kernel's comparator */
+		func = act_keyctl_purge_search_func;
+	} else if (argc == 1) {
+		if (purge.prefix_match || purge.case_indep)
+			format();
+		/* purge all keys of a specific type */
+		func = act_keyctl_purge_type_func;
+	} else if (argc == 2) {
+		/* purge all keys of a specific type with literally matching
+		 * description */
+		func = act_keyctl_purge_literal_func;
+	} else {
+		format();
+	}
+
+	n = recursive_session_key_scan(func, &purge);
+	printf("purged %d keys\n", n);
+	return 0;
+}
+
+/*****************************************************************************/
+/*
  * parse a key identifier
  */
 static key_serial_t get_key_id(const char *arg)
@@ -1266,7 +1590,7 @@ static key_serial_t get_key_id(const char *arg)
 /*
  * recursively display a key/keyring tree
  */
-static int dump_key_tree_aux(key_serial_t key, int depth, int more)
+static int dump_key_tree_aux(key_serial_t key, int depth, int more, int hex_key_IDs)
 {
 	static char dumpindent[64];
 	key_serial_t *pk;
@@ -1320,13 +1644,22 @@ static int dump_key_tree_aux(key_serial_t key, int depth, int more)
 	/* and print */
 	calc_perms(pretty_mask, perm, uid, gid);
 
-	printf("%9d %s  %5d %5d  %s%s%s: %s\n",
-	       key,
-	       pretty_mask,
-	       uid, gid,
-	       dumpindent,
-	       depth > 0 ? "\\_ " : "",
-	       type, desc + dpos);
+	if (hex_key_IDs)
+		printf("0x%08x %s  %5d %5d  %s%s%s: %s\n",
+		       key,
+		       pretty_mask,
+		       uid, gid,
+		       dumpindent,
+		       depth > 0 ? "\\_ " : "",
+		       type, desc + dpos);
+	else
+		printf("%10d %s  %5d %5d  %s%s%s: %s\n",
+		       key,
+		       pretty_mask,
+		       uid, gid,
+		       dumpindent,
+		       depth > 0 ? "\\_ " : "",
+		       type, desc + dpos);
 
 	/* if it's a keyring then we're going to want to recursively
 	 * display it if we can */
@@ -1377,7 +1710,8 @@ static int dump_key_tree_aux(key_serial_t key, int depth, int more)
 
 				kcount += dump_key_tree_aux(key,
 							    rdepth,
-							    ringlen - 4 >= sizeof(key_serial_t));
+							    ringlen - 4 >= sizeof(key_serial_t),
+							    hex_key_IDs);
 			}
 
 		} while (ringlen -= 4, ringlen >= sizeof(key_serial_t));
@@ -1394,9 +1728,14 @@ static int dump_key_tree_aux(key_serial_t key, int depth, int more)
 /*
  * recursively list a keyring's contents
  */
-static int dump_key_tree(key_serial_t keyring, const char *name)
+static int dump_key_tree(key_serial_t keyring, const char *name, int hex_key_IDs)
 {
 	printf("%s\n", name);
-	return dump_key_tree_aux(keyring, 0, 0);
+
+	keyring = keyctl_get_keyring_ID(keyring, 0);
+	if (keyring == -1)
+		error("Unable to dump key");
+
+	return dump_key_tree_aux(keyring, 0, 0, hex_key_IDs);
 
 } /* end dump_key_tree() */

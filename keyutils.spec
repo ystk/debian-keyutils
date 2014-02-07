@@ -1,14 +1,17 @@
 %define vermajor 1
-%define version %{vermajor}.4
+%define verminor 5.5
+%define version %{vermajor}.%{verminor}
 %define libdir /%{_lib}
 %define usrlibdir %{_prefix}/%{_lib}
 %define libapivermajor 1
-%define libapiversion %{libapivermajor}.3
+%define libapiversion %{libapivermajor}.4
+
+# % define buildid .local
 
 Summary: Linux Key Management Utilities
 Name: keyutils
 Version: %{version}
-Release: 1%{?dist}
+Release: 1%{?dist}%{?buildid}
 License: GPLv2+ and LGPLv2+
 Group: System Environment/Base
 ExclusiveOS: Linux
@@ -18,6 +21,7 @@ Source0: http://people.redhat.com/~dhowells/keyutils/keyutils-%{version}.tar.bz2
 
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: glibc-kernheaders >= 2.4-9.1.92
+Requires: keyutils-libs == %{version}-%{release}
 
 %description
 Utilities to control the kernel key management facility and to provide
@@ -50,7 +54,7 @@ make \
 	USRLIBDIR=%{usrlibdir} \
 	RELEASE=.%{release} \
 	NO_GLIBC_KEYERR=1 \
-	CFLAGS="-Wall $RPM_OPT_FLAGS"
+	CFLAGS="-Wall $RPM_OPT_FLAGS -Werror"
 
 %install
 rm -rf $RPM_BUILD_ROOT
@@ -91,15 +95,73 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man3/*
 
 %changelog
-* Fri Mar 19 2010 David Howells  <dhowells@redhat.com> - 1.4-1
+* Tue Nov 30 2011 David Howells <dhowells@redhat.com> - 1.5.5-1
+- Fix a Makefile error.
+
+* Tue Nov 30 2011 David Howells <dhowells@redhat.com> - 1.5.4-1
+- Fix the keyctl padd command and similar to handle binary input.
+- Make keyctl show able to take a keyring to dump.
+- Make keyctl show able to take a flag to request hex key IDs.
+- Make keyctl show print the real ID of the root keyring.
+
+* Tue Nov 15 2011 David Howells <dhowells@redhat.com>
+- Allow /sbin/request-key to have multiple config files.
+
+* Wed Aug 14 2011 David Howells <dhowells@redhat.com>
+- Adjust the manual page for 'keyctl unlink' to show keyring is optional.
+- Add --version support for the keyutils version and build date.
+
+* Thu Aug 11 2011 David Howells <dhowells@redhat.com> - 1.5.3-1
+- Make the keyutils rpm depend on the same keyutils-libs rpm version.
+
+* Tue Jul 26 2011 David Howells <dhowells@redhat.com> - 1.5.2-1
+- Use correct format spec for printing pointer subtraction results.
+
+* Tue Jul 19 2011 David Howells <dhowells@redhat.com> - 1.5.1-1
+- Fix unread variables.
+- Licence file update.
+
+* Thu Mar 10 2011 David Howells <dhowells@redhat.com> - 1.5-1
+- Disable RPATH setting in Makefile.
+- Add -I. to build to get this keyutils.h.
+- Make CFLAGS override on make command line work right.
+- Make specfile UTF-8.
+- Support KEYCTL_REJECT.
+- Support KEYCTL_INSTANTIATE_IOV.
+- Add AFSDB DNS lookup program from Wang Lei.
+- Generalise DNS lookup program.
+- Add recursive scan utility function.
+- Add bad key reap command to keyctl.
+- Add multi-unlink variant to keyctl unlink command.
+- Add multi key purger command to keyctl.
+- Handle multi-line commands in keyctl command table.
+- Move the package to version to 1.5.
+
+* Tue Mar 1 2011 David Howells <dhowells@redhat.com> - 1.4-4
+- Make build guess at default libdirs and word size.
+- Make program build depend on library in Makefile.
+- Don't include $(DESTDIR) in MAN* macros.
+- Remove NO_GLIBC_KEYSYS as it is obsolete.
+- Have Makefile extract version info from specfile and version script.
+- Provide RPM build rule in Makefile.
+- Provide distclean rule in Makefile.
+
+* Fri Dec 17 2010 Diego Elio Pettenò <flameeyes@hosting.flameeyes.eu> - 1.4-3
+- Fix local linking and RPATH.
+
+* Thu Jun 10 2010 David Howells <dhowells@redhat.com> - 1.4-2
+- Fix prototypes in manual pages (some char* should be void*).
+- Rename the keyctl_security.3 manpage to keyctl_get_security.3.
+
+* Fri Mar 19 2010 David Howells <dhowells@redhat.com> - 1.4-1
 - Fix the library naming wrt the version.
 - Move the package to version to 1.4.
 
-* Fri Mar 19 2010 David Howells  <dhowells@redhat.com> - 1.3-3
+* Fri Mar 19 2010 David Howells <dhowells@redhat.com> - 1.3-3
 - Fix spelling mistakes in manpages.
 - Add an index manpage for all the keyctl functions.
 
-* Thu Mar 11 2010 David Howells  <dhowells@redhat.com> - 1.3-2
+* Thu Mar 11 2010 David Howells <dhowells@redhat.com> - 1.3-2
 - Fix rpmlint warnings.
 
 * Fri Feb 26 2010 David Howells <dhowells@redhat.com> - 1.3-1

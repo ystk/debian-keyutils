@@ -1,6 +1,6 @@
 /* keyutils.c: key utility library
  *
- * Copyright (C) 2005 Red Hat, Inc. All Rights Reserved.
+ * Copyright (C) 2005,2011 Red Hat, Inc. All Rights Reserved.
  * Written by David Howells (dhowells@redhat.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -16,9 +16,13 @@
 #include <string.h>
 #include <unistd.h>
 #include <dlfcn.h>
+#include <sys/uio.h>
 #include <errno.h>
 #include <asm/unistd.h>
 #include "keyutils.h"
+
+const char keyutils_version_string[] = PKGVERSION;
+const char keyutils_build_string[] = PKGBUILD;
 
 #ifdef NO_GLIBC_KEYERR
 static int error_inited;
@@ -175,6 +179,51 @@ long keyctl_session_to_parent(void)
 	return keyctl(KEYCTL_SESSION_TO_PARENT);
 }
 
+long keyctl_reject(key_serial_t id, unsigned timeout, unsigned error,
+		   key_serial_t ringid)
+{
+	long ret = keyctl(KEYCTL_REJECT, id, timeout, error, ringid);
+
+	/* fall back to keyctl_negate() if this op is not supported by this
+	 * kernel version */
+	if (ret == -1 && errno == EOPNOTSUPP)
+		return keyctl_negate(id, timeout, ringid);
+	return ret;
+}
+
+long keyctl_instantiate_iov(key_serial_t id,
+			    const struct iovec *payload_iov,
+			    unsigned ioc,
+			    key_serial_t ringid)
+{
+	long ret = keyctl(KEYCTL_INSTANTIATE_IOV, id, payload_iov, ioc, ringid);
+
+	/* fall back to keyctl_instantiate() if this op is not supported by
+	 * this kernel version */
+	if (ret == -1 && errno == EOPNOTSUPP) {
+		unsigned loop;
+		size_t bsize = 0, seg;
+		void *buf, *p;
+
+		if (!payload_iov || !ioc)
+			return keyctl_instantiate(id, NULL, 0, ringid);
+		for (loop = 0; loop < ioc; loop++)
+			bsize += payload_iov[loop].iov_len;
+		if (bsize == 0)
+			return keyctl_instantiate(id, NULL, 0, ringid);
+		p = buf = malloc(bsize);
+		if (!buf)
+			return -1;
+		for (loop = 0; loop < ioc; loop++) {
+			seg = payload_iov[loop].iov_len;
+			p = memcpy(p, payload_iov[loop].iov_base, seg) + seg;
+		}
+		ret = keyctl_instantiate(id, buf, bsize, ringid);
+		free(buf);
+	}
+	return ret;
+}
+
 /*****************************************************************************/
 /*
  * fetch key description into an allocated buffer
@@ -290,6 +339,89 @@ int keyctl_get_security_alloc(key_serial_t id, char **_buffer)
 
 	*_buffer = buf;
 	return buflen - 1;
+}
+
+/*
+ * Depth-first recursively apply a function over a keyring tree
+ */
+static int recursive_key_scan_aux(key_serial_t parent, key_serial_t key,
+				  int depth, recursive_key_scanner_t func,
+				  void *data)
+{
+	key_serial_t *pk;
+	key_perm_t perm;
+	size_t ringlen;
+	void *ring;
+	char *desc, type[255];
+	int desc_len, uid, gid, ret, n, kcount = 0;
+
+	if (depth > 800)
+		return 0;
+
+	/* read the key description */
+	desc = NULL;
+	desc_len = keyctl_describe_alloc(key, &desc);
+	if (desc_len < 0)
+		goto do_this_key;
+
+	/* parse */
+	type[0] = 0;
+
+	n = sscanf(desc, "%[^;];%d;%d;%x;", type, &uid, &gid, &perm);
+	if (n != 4) {
+		free(desc);
+		desc = NULL;
+		errno = -EINVAL;
+		desc_len = -1;
+		goto do_this_key;
+	}
+
+	/* if it's a keyring then we're going to want to recursively search it
+	 * if we can */
+	if (strcmp(type, "keyring") == 0) {
+		/* read the keyring's contents */
+		ret = keyctl_read_alloc(key, &ring);
+		if (ret < 0)
+			goto do_this_key;
+
+		ringlen = ret;
+
+		/* walk the keyring */
+		pk = ring;
+		for (ringlen = ret;
+		     ringlen >= sizeof(key_serial_t);
+		     ringlen -= sizeof(key_serial_t)
+		     )
+			kcount += recursive_key_scan_aux(key, *pk++, depth + 1,
+							 func, data);
+
+		free(ring);
+	}
+
+do_this_key:
+	kcount += func(parent, key, desc, desc_len, data);
+	free(desc);
+	return kcount;
+}
+
+/*
+ * Depth-first apply a function over a keyring tree
+ */
+int recursive_key_scan(key_serial_t key, recursive_key_scanner_t func, void *data)
+{
+	return recursive_key_scan_aux(0, key, 0, func, data);
+}
+
+/*
+ * Depth-first apply a function over session keyring tree
+ */
+int recursive_session_key_scan(recursive_key_scanner_t func, void *data)
+{
+	key_serial_t session =
+		keyctl_get_keyring_ID(KEY_SPEC_SESSION_KEYRING, 0);
+	if (session > 0)
+		return recursive_key_scan(session, func, data);
+	return 0;
 }
 
 #ifdef NO_GLIBC_KEYERR
