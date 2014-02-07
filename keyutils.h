@@ -1,6 +1,6 @@
 /* keyutils.h: key utility library interface
  *
- * Copyright (C) 2005 Red Hat, Inc. All Rights Reserved.
+ * Copyright (C) 2005,2011 Red Hat, Inc. All Rights Reserved.
  * Written by David Howells (dhowells@redhat.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -13,6 +13,9 @@
 #define KEYUTILS_H
 
 #include <stdint.h>
+
+extern const char keyutils_version_string[];
+extern const char keyutils_build_string[];
 
 /* key serial number */
 typedef int32_t key_serial_t;
@@ -91,6 +94,8 @@ typedef uint32_t key_perm_t;
 #define KEYCTL_ASSUME_AUTHORITY		16	/* assume authority to instantiate key */
 #define KEYCTL_GET_SECURITY		17	/* get key security label */
 #define KEYCTL_SESSION_TO_PARENT	18	/* set my session keyring on my parent process */
+#define KEYCTL_REJECT			19	/* reject a partially constructed key */
+#define KEYCTL_INSTANTIATE_IOV		20	/* instantiate a partially constructed key */
 
 /*
  * syscall wrappers
@@ -136,6 +141,13 @@ extern long keyctl_set_timeout(key_serial_t key, unsigned timeout);
 extern long keyctl_assume_authority(key_serial_t key);
 extern long keyctl_get_security(key_serial_t key, char *buffer, size_t buflen);
 extern long keyctl_session_to_parent(void);
+extern long keyctl_reject(key_serial_t id, unsigned timeout, unsigned error,
+			  key_serial_t ringid);
+struct iovec;
+extern long keyctl_instantiate_iov(key_serial_t id,
+				   const struct iovec *payload_iov,
+				   unsigned ioc,
+				   key_serial_t ringid);
 
 /*
  * utilities
@@ -144,5 +156,9 @@ extern int keyctl_describe_alloc(key_serial_t id, char **_buffer);
 extern int keyctl_read_alloc(key_serial_t id, void **_buffer);
 extern int keyctl_get_security_alloc(key_serial_t id, char **_buffer);
 
+typedef int (*recursive_key_scanner_t)(key_serial_t parent, key_serial_t key,
+				       char *desc, int desc_len, void *data);
+extern int recursive_key_scan(key_serial_t key, recursive_key_scanner_t func, void *data);
+extern int recursive_session_key_scan(recursive_key_scanner_t func, void *data);
 
 #endif /* KEYUTILS_H */
