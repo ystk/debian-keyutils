@@ -7,7 +7,7 @@
 .\" as published by the Free Software Foundation; either version
 .\" 2 of the License, or (at your option) any later version.
 .\"
-.TH KEYCTL 1 "17 Nov 2005" Linux "Linux Key Management Utilities"
+.TH KEYCTL 1 "20 Feb 2014" Linux "Linux Key Management Utilities"
 .SH NAME
 keyctl - Key management facility control
 .SH SYNOPSIS
@@ -61,6 +61,8 @@ keyctl - Key management facility control
 .br
 \fBkeyctl\fR setperm <key> <mask>
 .br
+\fBkeyctl\fR new_session
+.br
 \fBkeyctl\fR session
 .br
 \fBkeyctl\fR session - [<prog> <arg1> <arg2> ...]
@@ -86,6 +88,8 @@ keyctl - Key management facility control
 \fBkeyctl\fR purge [-i] [-p] <type> <desc>
 .br
 \fBkeyctl\fR purge -s <type> <desc>
+.br
+\fBkeyctl\fR get_persistent <keyring> [<uid>]
 .SH DESCRIPTION
 This program is used to control the key management facility in various ways
 using a variety of subcommands.
@@ -135,6 +139,16 @@ implemented yet in the kernel.
 .P
 This selects the authorisation key provided to the request_key() helper to
 permit it to access the callers keyrings and instantiate the target key.
+.P
+(*) Keyring by name: \fB%:<name>\fR
+.P
+A named keyring.  This will be searched for in the process's keyrings and in
+/proc/keys.
+.P
+(*) Key by name: \fB%<type>:<name>\fR
+.P
+A named key of the given type.  This will be searched for in the process's
+keyrings and in /proc/keys.
 .SH COMMAND SYNTAX
 Any non-ambiguous shortening of a command name may be used in lieu of the full
 command name. This facility should not be used in scripting as new commands may
@@ -710,6 +724,26 @@ The third variant purges all keys of the specified type and matching
 description using the key type's comparator in the kernel to match the
 description.  This permits the key type to match a key with a variety of
 descriptions.
+.P
+(*) \fBGet persistent keyring\fR
+.P
+\fBkeyctl\fR get_persistent <keyring> [<uid>]
+.P
+This command gets the persistent keyring for either the current UID or the
+specified UID and attaches it to the nominated keyring.  The persistent
+keyring's ID will be printed on stdout.
+.P
+The kernel will create the keyring if it doesn't exist and every time this
+command is called, will reset the expiration timeout on the keyring to the
+value in:
+.IP
+/proc/sys/kernel/keys/persistent_keyring_expiry
+.P
+(by default three days).  Should the timeout be reached, the persistent keyring
+will be removed and everything it pins can then be garbage collected.
+.P
+If a UID other than the process's real or effective UIDs is specified, then an
+error will be given if the process does not have the CAP_SETUID capability.
 .P
 .SH ERRORS
 .P

@@ -10,6 +10,10 @@
 #
 ###############################################################################
 
+# Find the relative path from pwd to the directory holding this file
+includes=${BASH_SOURCE[0]}
+includes=${includes%/*}/
+
 echo === $OUTPUTFILE ===
 
 endian=`file -L /proc/$$/exe`
@@ -34,6 +38,14 @@ maxdesc=`for ((i=0; i<$((maxdesclen)); i++)); do echo -n a; done`
 maxcall=$maxdesc
 
 maxsquota=`grep '^ *0': /proc/key-users | sed s@.*/@@`
+
+key_gc_delay_file="/proc/sys/kernel/keys/gc_delay"
+if [ -f $key_gc_delay_file ]; then
+    orig_gc_delay=`cat $key_gc_delay_file`
+else
+    orig_gc_delay=300
+fi
+
 
 function marker ()
 {
@@ -72,70 +84,7 @@ function toolbox_report_result()
     fi
 }
 
-###############################################################################
-#
-# compare version numbers to see if the first is less (older) than the second
-#
-###############################################################################
-function version_less_than ()
-{
-    a=$1
-    b=$2
-
-    if [ "$a" = "$b" ]
-    then
-	return 1
-    fi
-
-    # grab the leaders
-    x=${a%%-*}
-    y=${b%%-*}
-
-    if [ "$x" = "$a" -o "$y" = "$b" ]
-    then
-	if [ "$x" = "$y" ]
-	then
-	    [ "$x" = "$a" ]
-	else
-	    __version_less_than_dot "$x" "$y"
-	fi
-    elif [ "$x" = "$y" ]
-    then
-	less_than "${a#*-}" "${b#*-}"
-    else
-	__version_less_than_dot "$x" "$y"
-    fi
-}
-
-function __version_less_than_dot ()
-{
-    a=$1
-    b=$2
-
-    if [ "$a" = "$b" ]
-    then
-	return 1
-    fi
-
-    # grab the leaders
-    x=${a%%.*}
-    y=${b%%.*}
-
-    if [ "$x" = "$a" -o "$y" = "$b" ]
-    then
-	if [ "$x" = "$y" ]
-	then
-	    [ "$x" = "$a" ]
-	else
-	    expr "$x" \< "$y" >/dev/null
-	fi
-    elif [ "$x" = "$y" ]
-    then
-	__version_less_than_dot "${a#*.}" "${b#*.}"
-    else
-	expr "$x" \< "$y" >/dev/null
-    fi
-}
+. $includes/version.inc.sh
 
 ###############################################################################
 #
@@ -288,6 +237,7 @@ function pause_till_key_unlinked ()
 	then
 	    break
 	fi
+	sleep 1
     done
 }
 
@@ -402,6 +352,31 @@ function pcreate_key ()
 
     echo echo -n $data \| keyctl padd "$@" >>$OUTPUTFILE
     echo -n $data | keyctl padd "$@" >>$OUTPUTFILE 2>&1
+    if [ $? != $my_exitval ]
+    then
+	failed
+    fi
+}
+
+###############################################################################
+#
+# create a key and attach it to the new keyring, piping in the data
+#
+###############################################################################
+function pcreate_key_by_size ()
+{
+    my_exitval=0
+    if [ "x$1" = "x--fail" ]
+    then
+	my_exitval=1
+	shift
+    fi
+
+    data="$1"
+    shift
+
+    echo dd if=/dev/zero count=1 bs=$data \| keyctl padd "$@" >>$OUTPUTFILE
+    dd if=/dev/zero count=1 bs=$data 2>/dev/null | keyctl padd "$@" >>$OUTPUTFILE 2>&1
     if [ $? != $my_exitval ]
     then
 	failed
@@ -534,8 +509,6 @@ function expect_keyring_rlist ()
 		fi
 	    done
 
-	    echo f=$my_found x=$my_expected >>$OUTPUTFILE
-
 	    if [ $my_found != $my_expected ]
 	    then
 		failed
@@ -666,6 +639,28 @@ function pipe_key ()
 
     echo keyctl pipe $1 >>$OUTPUTFILE
     keyctl pipe $1 >>$OUTPUTFILE 2>&1
+    if [ $? != $my_exitval ]
+    then
+	failed
+    fi
+}
+
+###############################################################################
+#
+# pipe a key's raw payload through md5sum
+#
+###############################################################################
+function md5sum_key ()
+{
+    my_exitval=0
+    if [ "x$1" = "x--fail" ]
+    then
+	my_exitval=1
+	shift
+    fi
+
+    echo keyctl pipe $1 \| md5sum \| cut -c1-32 >>$OUTPUTFILE
+    keyctl pipe $1 | md5sum | cut -c1-32 >>$OUTPUTFILE 2>&1
     if [ $? != $my_exitval ]
     then
 	failed
@@ -1063,6 +1058,28 @@ function timeout_key ()
 
 ###############################################################################
 #
+# Invalidate a key
+#
+###############################################################################
+function invalidate_key ()
+{
+    my_exitval=0
+    if [ "x$1" = "x--fail" ]
+    then
+	my_exitval=1
+	shift
+    fi
+
+    echo keyctl invalidate $1 >>$OUTPUTFILE
+    keyctl invalidate $1 >>$OUTPUTFILE 2>&1
+    if [ $? != $my_exitval ]
+    then
+	failed
+    fi
+}
+
+###############################################################################
+#
 # Make sure we sleep at least N seconds
 #
 ###############################################################################
@@ -1077,3 +1094,18 @@ function sleep_at_least ()
 	sleep .02
     done
 }
+
+###############################################################################
+#
+# set gc delay time, return original value
+#
+###############################################################################
+function set_gc_delay()
+{
+    delay=$1
+    if [ -f $key_gc_delay_file ]; then
+        echo $delay > $key_gc_delay_file
+        echo "Set $key_gc_delay_file to $delay, orig: $orig_gc_delay"
+    fi
+}
+

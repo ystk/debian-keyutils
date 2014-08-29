@@ -7,58 +7,84 @@
 .\" as published by the Free Software Foundation; either version
 .\" 2 of the License, or (at your option) any later version.
 .\"
-.TH KEYCTL_JOIN_SESSION_KEYRING 3 "4 May 2006" Linux "Linux Key Management Calls"
+.TH KEYCTL_LINK 3 "4 May 2006" Linux "Linux Key Management Calls"
 .\"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH NAME
-keyctl_join_session_keyring \- Join a different session keyring
+keyctl_link \- Link a key to a keyring
+keyctl_unlink \- Unlink a key from a keyring
 .\"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH SYNOPSIS
 .nf
 .B #include <keyutils.h>
 .sp
-.BI "key_serial_t keyctl_join_session_keyring(const char *" name ");"
+.BI "long keyctl_link(key_serial_t " key ", key_serial_t " keyring ");"
+.sp
+.BI "long keyctl_unlink(key_serial_t " key ", key_serial_t " keyring ");"
 .\"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH DESCRIPTION
-.BR keyctl_join_session_keyring ()
-changes the session keyring to which a process is subscribed.
+.BR keyctl_link ()
+creates a link from
+.I keyring
+to
+.IR key ,
+displacing any link to another key of the same type and description in that
+keyring if one exists.
 .P
-If
-.I name
-is
-.B NULL
-then a new anonymous keyring will be created, and the process will be
-subscribed to that.
+.BR keyctl_unlink ()
+removes the link from
+.I keyring
+to
+.I key
+if it exists.
 .P
-If
-.I name
-points to a string, then if a keyring of that name is available, the process
-will attempt to subscribe to that keyring, giving an error if that is not
-permitted; otherwise a new keyring of that name is created and attached as the
-session keyring.
+The caller must have
+.B write
+permission on a keyring to be able create or remove links in it.
 .P
-To attach to an extant named keyring, the keyring must have
-.B search
-permission available to the calling process.
+The caller must have
+.B link
+permission on a key to be able to create a link to it.
 .\"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH RETURN VALUE
 On success
-.BR keyctl_join_session_keyring ()
-returns the serial number of the key it found or created.  On error, the value
+.BR keyctl_link ()
+and
+.BR keyctl_unlink ()
+return
+.BR 0 .
+On error, the value
 .B -1
 will be returned and errno will have been set to an appropriate error.
 .\"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH ERRORS
 .TP
-.B ENOMEM
-Insufficient memory to create a key.
+.B ENOKEY
+The key or the keyring specified are invalid.
 .TP
-.B EDQUOT
-The key quota for this user would be exceeded by creating this key or linking
-it to the keyring.
+.B EKEYEXPIRED
+The key or the keyring specified have expired.
+.TP
+.B EKEYREVOKED
+The key or the keyring specified have been revoked.
 .TP
 .B EACCES
-The named keyring exists, but is not
-.B searchable
+The keyring exists, but is not
+.B writable
+by the calling process.
+.P
+For
+.BR keyctl_link ()
+only:
+.TP
+.B ENOMEM
+Insufficient memory to expand the keyring
+.TP
+.B EDQUOT
+Expanding the keyring would exceed the keyring owner's quota.
+.TP
+.B EACCES
+The key exists, but is not
+.B linkable
 by the calling process.
 .\"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 .SH LINKING
@@ -79,4 +105,7 @@ should be specified to the linker.
 .br
 .BR keyctl (3),
 .br
-.BR request-key (8)
+.BR keyutils (7),
+.br
+.BR keyrings (7)
+
